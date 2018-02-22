@@ -96,7 +96,7 @@ DateTime dt_then;
 
 Adafruit_NeoPixel np60 = Adafruit_NeoPixel(NEO_MAX, NEO_DIN, NEO_GRBW + NEO_KHZ800);
 
-volatile byte rtc_sq_interrupt = HIGH; 
+volatile byte rtc_sq_interrupt = LOW; 
 volatile byte enc_sw_interrupt = LOW;
 
 /*
@@ -112,11 +112,11 @@ void fault(const String& description) {
  * Interrupt Service Routines
  */
 void rtc_sq_isr() {
-  rtc_sq_interrupt = !rtc_sq_interrupt;
+  rtc_sq_interrupt = HIGH;
 }
 
 void enc_sw_isr() {
-  enc_sw_interrupt = !enc_sw_interrupt;
+  enc_sw_interrupt = HIGH;
 }
 
 /*
@@ -129,6 +129,193 @@ void encoder_rgb_led(byte red, byte green, byte blue) {
   digitalWrite(ENC_GRE, (green) ? LOW : HIGH);
   digitalWrite(ENC_BLU, (blue) ? LOW : HIGH);
 }
+
+void debounce_enc_switch(void) {
+  while(digitalRead(ENC_SW));
+  enc_sw_interrupt = LOW;
+}
+
+/*!
+ * @brief Base class for changing a setting.
+ */
+class set_base {
+public:
+  virtual void set_encoder_led(void) { PRINTLN("set_base->set_encoder_led"); }
+  virtual void enc_left(void) { PRINTLN("set_base->enc_left"); }
+  virtual void enc_right(void) { PRINTLN("set_base->enc_right"); }
+  virtual void init_display(void) { PRINTLN("set_base->init_display"); }
+  virtual void update_display(void) { PRINTLN("set_base->update_display"); }
+  virtual void final(void) { PRINTLN("set_base->final"); }
+
+  void action(void) {
+    byte enc_a;
+    byte enc_b;
+    byte prev_enc_a=0;
+
+    debounce_enc_switch();
+
+    this->set_encoder_led();
+    this->init_display();
+
+    // Loop until the Encoder Switch is activated again.
+    while(enc_sw_interrupt == LOW) {
+      enc_a = digitalRead(ENC_A);
+      enc_b = digitalRead(ENC_B);
+
+      if (!enc_a && prev_enc_a) {
+        if (enc_b) {
+          this->enc_left();
+        }
+        else { 
+          this->enc_right();
+        }
+      }
+      prev_enc_a = enc_a;
+      delay(5);
+    }
+    this->final();
+  };
+};
+
+class set_hour : public set_base {
+public:
+  int hour;
+  int hour_r;
+  int hour_b;
+  int prev;
+
+  void set_encoder_led(void) {
+    encoder_rgb_led(LED_ON, LED_OFF, LED_OFF); // Red
+  };
+
+  virtual void enc_left(void) {
+    this->hour = (this->hour == 23) ? 0 : this->hour + 1;
+    this->update_display();
+  };
+
+  virtual void enc_right(void) {
+    this->hour = (this->hour == 0) ? 23 : this->hour - 1;
+    this->update_display();
+  };
+
+  void set_hour_pixel_colour(void) {
+    if (this->hour < 12) {    // In AM - Hour indicator is red
+      this->hour_r = 30;
+      this->hour_b = 0;
+     }
+     else {                   // In PM - Hour indicator is Blue
+      this->hour_b = 30;
+      this->hour_r = 0;
+     }    
+  };
+
+  virtual void init_display(void) {
+    DateTime time_now = rtc.now();
+
+    this->hour = time_now.hour();
+    this->set_hour_pixel_colour();
+    
+    for(int idx=0; idx < NEO_MAX; idx++) {
+      if ((idx % 5) == 0) 
+        np60.setPixelColor(idx, 0, 0, 0, 1);
+      else
+        np60.setPixelColor(idx, 0, 0, 0, 0);
+
+    int hour_pixel = (this->hour < 12) ? this->hour * 5 : (this->hour-12) * 5;
+    np60.setPixelColor(hour_pixel, this->hour_r,  0, this->hour_b, 1);
+    np60.show();
+    this->prev = hour_pixel;
+    }
+  };
+
+  virtual void update_display(void) {
+     int hour_pixel = (this->hour < 12) ? this->hour * 5 : (this->hour-12) * 5;
+     
+     this->set_hour_pixel_colour();
+     
+     np60.setPixelColor(this->prev, 0, 0, 0, 1);
+     np60.setPixelColor(hour_pixel, this->hour_r, 0, this->hour_b, 1);
+     np60.show();
+     this->prev = hour_pixel;    
+  };
+
+  virtual void final(void) {
+    DateTime time_now = rtc.now();
+    DateTime new_time = DateTime(
+      time_now.year(),
+      time_now.month(),
+      time_now.day(),
+      this->hour,
+      time_now.minute(),
+      0
+      );
+    rtc.adjust(new_time);
+  };
+};
+
+class set_minute : public set_base {
+public:
+  int minute;
+  int prev;
+
+  void set_encoder_led(void) {
+    encoder_rgb_led(LED_OFF, LED_ON, LED_OFF); // green
+  }
+
+  void enc_left(void) {
+    this->minute = (this->minute == 59) ? 0 : this->minute + 1;
+    this->update_display();
+  }
+
+  void enc_right(void) {
+    this->minute = (this->minute == 0) ? 59 : this->minute - 1;
+    this->update_display();
+  }
+
+  void init_display(void) {
+    DateTime time_now = rtc.now();
+    int white;
+
+    this->minute = time_now.minute();
+    
+    for(int idx=0; idx < NEO_MAX; idx++) {
+      white =  ((idx % 5) == 0) ? 1 : 0;
+      np60.setPixelColor(idx, 0, 0, 0, white);
+    }
+
+    white = ((this->minute % 5) == 0) ? 1 : 0;
+
+    np60.setPixelColor(this->minute, 0,  30, 0, white);
+    np60.show();
+    this->prev = this->minute;
+  }
+
+  void update_display(void) {
+     int white = ((this->prev % 5) == 0) ? 1 : 0;
+     
+     np60.setPixelColor(this->prev, 0, 0, 0, white);
+     
+     white = ((this->minute % 5) == 0) ? 1 : 0;
+     np60.setPixelColor(this->minute, 0, 30, 0, white);
+     
+     np60.show();
+     this->prev = this->minute;    
+  };
+
+  void final(void) {
+    DateTime time_now = rtc.now();
+    DateTime new_time = DateTime(
+      time_now.year(),
+      time_now.month(),
+      time_now.day(),
+      time_now.hour(),
+      this->minute,
+      0
+      );
+    rtc.adjust(new_time);
+  };
+};
+
 
 byte previous_second = 0;
 /*
@@ -172,6 +359,8 @@ void setup() {
   pinMode(ENC_BLU, OUTPUT);
   pinMode(ENC_GRE, OUTPUT);
 
+  attachInterrupt(digitalPinToInterrupt(ENC_SW), enc_sw_isr, FALLING);
+
   // Initially the Encoder LED are all off
   encoder_rgb_led(LED_OFF, LED_OFF, LED_OFF);
 
@@ -187,6 +376,15 @@ void setup() {
 }
 
 void loop() {
+  if (enc_sw_interrupt) {
+    PRINTLN("ENC_SW");
+    
+    set_hour().action();
+    set_minute().action();
+    
+    encoder_rgb_led(OFF, OFF, OFF);
+    debounce_enc_switch();
+  }
   if (rtc_sq_interrupt) {
     rtc_sq_interrupt = LOW;
 
