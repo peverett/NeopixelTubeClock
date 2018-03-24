@@ -1,9 +1,10 @@
+
 /* 
  *  NeopixelTubeClock
  *  
  *  Hardware
  *  - Arduino Nano Microcontroller
- *  - Real Time Clock DS1307 - TinyRTC
+ *  - Real Time Clock DS1607 - TinyRTC
  *  - Illuminated Rotary Encoder RGB
  *  - Strip of 60 RGBW Neopixels (ADA2837)
  *  
@@ -14,7 +15,7 @@
  *  
  *  Connections
  *  
- *  Arduino Nano  | TinyRTC DS1307 
+ *  Arduino Nano  | TinyRTC DS1607 
  *  --------------+------------------
  *  A4            | SDA
  *  A5            | SCL
@@ -48,8 +49,8 @@
  *  D09           | B - Blue
  *  +5V           | +
  */
-#define ENC_A  (14)
-#define ENC_B  (15)
+#define ENC_A  (15)
+#define ENC_B  (14)
 
 #define ENC_RED (11)
 #define ENC_GRE (10)
@@ -81,7 +82,7 @@
 /* 
  *  Library Headers
  */
- 
+#include <Arduino.h>
 #include <Wire.h>
 #include "RTClib.h"
 #include "Adafruit_NeoPixel.h"
@@ -171,7 +172,7 @@ public:
         }
       }
       prev_enc_a = enc_a;
-      delay(5);
+      delay(1);
     }
     this->final();
   };
@@ -200,11 +201,11 @@ public:
 
   void set_hour_pixel_colour(void) {
     if (this->hour < 12) {    // In AM - Hour indicator is red
-      this->hour_r = 30;
+      this->hour_r = 60;
       this->hour_b = 0;
      }
      else {                   // In PM - Hour indicator is Blue
-      this->hour_b = 30;
+      this->hour_b = 60;
       this->hour_r = 0;
      }    
   };
@@ -217,7 +218,7 @@ public:
     
     for(int idx=0; idx < NEO_MAX; idx++) {
       if ((idx % 5) == 0) 
-        np60.setPixelColor(idx, 0, 0, 0, 1);
+        np60.setPixelColor(idx, 0, 0, 0, 30);
       else
         np60.setPixelColor(idx, 0, 0, 0, 0);
 
@@ -283,20 +284,20 @@ public:
       np60.setPixelColor(idx, 0, 0, 0, white);
     }
 
-    white = ((this->minute % 5) == 0) ? 1 : 0;
+    white = ((this->minute % 5) == 0) ? 30 : 0;
 
-    np60.setPixelColor(this->minute, 0,  30, 0, white);
+    np60.setPixelColor(this->minute, 0,  60, 0, white);
     np60.show();
     this->prev = this->minute;
   }
 
   void update_display(void) {
-     int white = ((this->prev % 5) == 0) ? 1 : 0;
+     int white = ((this->prev % 5) == 0) ? 30 : 0;
      
      np60.setPixelColor(this->prev, 0, 0, 0, white);
      
-     white = ((this->minute % 5) == 0) ? 1 : 0;
-     np60.setPixelColor(this->minute, 0, 30, 0, white);
+     white = ((this->minute % 5) == 0) ? 30 : 0;
+     np60.setPixelColor(this->minute, 0, 60, 0, white);
      
      np60.show();
      this->prev = this->minute;    
@@ -317,7 +318,103 @@ public:
 };
 
 
-byte previous_second = 0;
+class BaseTimeDisplay {
+public:
+  BaseTimeDisplay(Adafruit_NeoPixel &r60) : ring60(r60) {};
+
+  virtual void Display(const DateTime &tn) {};
+  virtual void Update(const DateTime &tn, const DateTime &tt) {};
+
+protected:
+  Adafruit_NeoPixel ring60;
+}; 
+
+void DecodeRGBW(const uint32_t color, uint8_t *r, uint8_t *g, uint8_t *b, uint8_t *w) {
+  *w = (uint8_t)(color>>24 & 0xFF);
+  *r = (uint8_t)(color>>16 & 0xFF);
+  *g = (uint8_t)(color>>8 & 0xFF);
+  *b = (uint8_t)(color & 0xFF);
+}
+
+inline uint8_t TwentyFourToTwelve(uint8_t twenty_four) {
+  return (twenty_four >= 12) ? twenty_four - 12 : twenty_four;
+}
+
+class AnalogTimeDisplay: public BaseTimeDisplay {
+public:
+  AnalogTimeDisplay(Adafruit_NeoPixel &r60) : BaseTimeDisplay(r60) {};
+
+  void Display(const DateTime &tn) {
+    uint8_t hr = TwentyFourToTwelve(tn.hour()) * 5;
+    uint8_t w, r, g, b;
+
+    for(int idx=0; idx < NEO_MAX; idx++) {
+      w =  ((idx % 5) == 0) ? 10 : 0;
+      np60.setPixelColor(idx, 0, 0, 0, w);
+    }
+
+    DecodeRGBW(ring60.getPixelColor(hr), &r, &g, &b, &w);
+    ring60.setPixelColor(hr, 60, 0, 0, w);
+    
+    DecodeRGBW(ring60.getPixelColor(tn.minute()), &r, &g, &b, &w);
+    ring60.setPixelColor(tn.minute(), 0, 60, 0, w);   
+
+    DecodeRGBW(ring60.getPixelColor(tn.second()), &r, &g, &b, &w);
+    ring60.setPixelColor(tn.second(), 0, 0, 60, w);  
+
+    ring60.show();
+  };
+
+  void Update(const DateTime &tn, const DateTime &tt) {
+    uint8_t hn = TwentyFourToTwelve(tn.hour()) * 5;
+    uint8_t ht = TwentyFourToTwelve(tt.hour()) * 5;
+    uint8_t w, r, g, b;
+
+    if (hn != ht) {
+      DecodeRGBW(ring60.getPixelColor(ht), &r, &g, &b, &w);
+      ring60.setPixelColor(ht, 0, 0, 0, w);
+      DecodeRGBW(ring60.getPixelColor(hn), &r, &g, &b, &w);
+      ring60.setPixelColor(hn, 60, 0, 0, w);
+    }
+
+    if (tn.minute() != tt.minute()) {
+      DecodeRGBW(ring60.getPixelColor(tt.minute()), &r, &g, &b, &w);
+      if (tt.minute() == hn) r = 60;
+      ring60.setPixelColor(tt.minute(), r, 0, 0, w);
+      DecodeRGBW(ring60.getPixelColor(tn.minute()), &r, &g, &b, &w);
+      ring60.setPixelColor(tn.minute(), 0, 60, 0, w);
+    }
+
+    if (tn.second() != tt.second()) {
+      DecodeRGBW(ring60.getPixelColor(tt.second()), &r, &g, &b, &w);
+      PRINT(r);
+      PRINT(":");
+      PRINT(g);
+      PRINT(":");
+      PRINT(b);
+      PRINT(":");
+      PRINTLN(w);
+      
+      if (tt.second() == hn) {
+        r = 60;
+        g = 0;
+      }
+      if (tt.second() == tn.minute()) {
+        r = 0;
+        g = 60;
+      }
+      ring60.setPixelColor(tt.second(), r, g, 0, w);
+      DecodeRGBW(ring60.getPixelColor(tn.second()), &r, &g, &b, &w);
+      ring60.setPixelColor(tn.second(), 0, 0, 60, w);
+    }  
+
+    ring60.show();
+  };
+
+};
+
+AnalogTimeDisplay atd = AnalogTimeDisplay(np60);
+
 /*
  * Setup and intialisation
  */
@@ -366,11 +463,11 @@ void setup() {
 
   // Initialise the Neopixel Strip
   PRINTLN(".. Initialising Neopixel Strip");
-
   np60.begin();
-  for (int idx=0; idx<NEO_MAX; idx++) np60.setPixelColor(idx, 0, 0, 0, 0);
-  np60.show();
 
+  // Display Time - default display mode
+  PRINTLN(".. Displaying time - default display mode");
+  atd.Display(dt_now);
 
   PRINTLN("Setup completed.");
 }
@@ -384,23 +481,24 @@ void loop() {
     
     encoder_rgb_led(OFF, OFF, OFF);
     debounce_enc_switch();
+
+    dt_now = rtc.now();
+    atd.Display(dt_now);
   }
   if (rtc_sq_interrupt) {
     rtc_sq_interrupt = LOW;
 
     dt_now = rtc.now();
 
-    PRINT(dt_now.hour());
-    PRINT(":"); 
-    PRINT(dt_now.minute());
-    PRINT(":"); 
-    PRINTLN(dt_now.second());
+    //PRINT(dt_now.hour());
+    //PRINT(":"); 
+    //PRINT(dt_now.minute());
+    //PRINT(":"); 
+    //PRINTLN(dt_now.second());
 
-    np60.setPixelColor(dt_now.second(), 0, 0, 0, 10);
-    np60.setPixelColor(previous_second, 0, 0, 0);
-    np60.show();
+    atd.Update(dt_now, dt_then);
 
-    previous_second = dt_now.second();
+    dt_then = dt_now;
   }
 
 }
