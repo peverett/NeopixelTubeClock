@@ -95,7 +95,43 @@ RTC_DS1307 rtc;
 DateTime dt_now;   
 DateTime dt_then;
 
-Adafruit_NeoPixel np60 = Adafruit_NeoPixel(NEO_MAX, NEO_DIN, NEO_GRBW + NEO_KHZ800);
+/* 
+ *  A thin shim class to Adafruit_NeoPixel, which allows the following:
+ *  - offset into the pixel range e.g. 0 = pixel 30 and pixel 30 wraps.
+ *  - Decode colours into passed uint8_t values.
+ */
+class NeoPixelOffset {
+public: 
+  NeoPixelOffset(uint16_t Offset) {
+    np = Adafruit_NeoPixel(NEO_MAX, NEO_DIN, NEO_GRBW + NEO_KHZ800);
+    offset = Offset;
+  };
+
+  void begin(void) { np.begin(); };
+
+  void show(void) { np.show(); };
+
+  void setPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b, uint8_t w) {
+    np.setPixelColor((n + offset) % NEO_MAX, r, g, b, w);
+  };
+
+  void getPixelColor(uint16_t n, uint8_t *r, uint8_t *g, uint8_t *b, uint8_t *w) {      
+    uint32_t color = np.getPixelColor((n + offset) % NEO_MAX);
+    
+    *w = (uint8_t)(color>>24 & 0xFF);
+    *r = (uint8_t)(color>>16 & 0xFF);
+    *g = (uint8_t)(color>>8 & 0xFF);
+    *b = (uint8_t)(color & 0xFF);
+}
+  
+private:
+  Adafruit_NeoPixel np;
+  uint16_t offset;
+};
+
+// For my clock, the top of the Neopixel circle (pin 29 is the 0 position, so use an offset
+// of 30.
+NeoPixelOffset np60 = NeoPixelOffset(30);
 
 volatile byte rtc_sq_interrupt = LOW; 
 volatile byte enc_sw_interrupt = LOW;
@@ -308,25 +344,19 @@ public:
 
 class BaseTimeDisplay {
 public:
-  BaseTimeDisplay(Adafruit_NeoPixel &r60) : ring60(r60) {};
+  BaseTimeDisplay(NeoPixelOffset &r60) : ring60(r60) {};
 
   virtual void Display(const DateTime &tn) {};
   virtual void Update(const DateTime &tn, const DateTime &tt) {};
 
 protected:
-  Adafruit_NeoPixel ring60;
+  NeoPixelOffset ring60;
 }; 
 
-void DecodeRGBW(const uint32_t color, uint8_t *r, uint8_t *g, uint8_t *b, uint8_t *w) {
-  *w = (uint8_t)(color>>24 & 0xFF);
-  *r = (uint8_t)(color>>16 & 0xFF);
-  *g = (uint8_t)(color>>8 & 0xFF);
-  *b = (uint8_t)(color & 0xFF);
-}
 
 class AnalogTimeDisplay: public BaseTimeDisplay {
 public:
-  AnalogTimeDisplay(Adafruit_NeoPixel &r60) : BaseTimeDisplay(r60) {};
+  AnalogTimeDisplay(NeoPixelOffset &r60) : BaseTimeDisplay(r60) {};
 
   void Display(const DateTime &tn) {
     for(int idx=0; idx < NEO_MAX; idx++) {
@@ -350,7 +380,7 @@ public:
 
     if (tn.minute() != tt.minute()) {
       if (tt.minute() == (TwentyFourToTwelve(tn.hour()) * 5)) 
-        ring60.setPixelColor(tt.minute(), ri, 0, 0);
+        ring60.setPixelColor(tt.minute(), ri, 0, 0, 0);
       else
         ring60.setPixelColor(tt.minute(), 0, 0, 0, ((tt.minute() % 5) == 0) ? wi : 0);
       ring60.setPixelColor(tn.minute(), 0, gi, 0, 0);
@@ -358,9 +388,9 @@ public:
 
     if (tn.second() != tt.second()) {
       if (tt.second() == tn.minute())
-        ring60.setPixelColor(tt.second(), 0, gi, 0);
+        ring60.setPixelColor(tt.second(), 0, gi, 0, 0);
       else if (tt.second() == (TwentyFourToTwelve(tn.hour()) * 5)) 
-        ring60.setPixelColor(tt.second(), ri, 0, 0);
+        ring60.setPixelColor(tt.second(), ri, 0, 0, 0);
       else
         ring60.setPixelColor(tt.second(), 0, 0, 0, ((tt.second() % 5) == 0) ? wi : 0);
       ring60.setPixelColor(tn.second(), 0, 0, bi, 0);
