@@ -277,7 +277,7 @@ public:
       time_now.day(),
       this->hour,
       time_now.minute(),
-      0
+      time_now.second()
       );
     rtc.adjust(new_time);
   };
@@ -335,7 +335,65 @@ public:
       time_now.day(),
       time_now.hour(),
       this->minute,
-      0
+      time_now.second()
+      );
+    rtc.adjust(new_time);
+  };
+};
+
+class set_second : public set_base {
+public:
+  int second;
+  int prev;
+
+  void set_encoder_led(void) {
+    encoder_rgb_led(LED_OFF, LED_OFF, LED_ON); // Blue
+  }
+
+  void enc_left(void) {
+    this->second = (this->second == 59) ? 0 : this->second + 1;
+    this->update_display();
+  }
+
+  void enc_right(void) {
+    this->second = (this->second == 0) ? 59 : this->second - 1;
+    this->update_display();
+  }
+
+  void init_display(void) {
+    DateTime time_now = rtc.now();
+    int white;
+
+    this->second = time_now.second();
+    
+    for(int idx=0; idx < NEO_MAX; idx++) {
+      np60.setPixelColor(idx, 0, 0, 0, ((idx % 5) == 0) ? wi : 0);
+    }
+
+    np60.setPixelColor(this->second, 0,  0, bi, 0);
+    np60.show();
+    this->prev = this->second;
+  }
+
+  void update_display(void) {
+     int white = ((this->prev % 5) == 0) ? 30 : 0;
+     
+     np60.setPixelColor(this->prev, 0, 0, 0, ((this->prev % 5) == 0) ? wi : 0);
+     np60.setPixelColor(this->second, 0, 0, bi, 0);
+     
+     np60.show();
+     this->prev = this->second;    
+  };
+
+  void final(void) {
+    DateTime time_now = rtc.now();
+    DateTime new_time = DateTime(
+      time_now.year(),
+      time_now.month(),
+      time_now.day(),
+      time_now.hour(),
+      time_now.minute(),
+      this->second
       );
     rtc.adjust(new_time);
   };
@@ -466,6 +524,7 @@ void loop() {
     
     set_hour().action();
     set_minute().action();
+    set_second().action();
     
     encoder_rgb_led(OFF, OFF, OFF);
     debounce_enc_switch();
