@@ -100,6 +100,12 @@ Adafruit_NeoPixel np60 = Adafruit_NeoPixel(NEO_MAX, NEO_DIN, NEO_GRBW + NEO_KHZ8
 volatile byte rtc_sq_interrupt = LOW; 
 volatile byte enc_sw_interrupt = LOW;
 
+
+uint8_t wi = 130;    /* White LED Intensity - white is generally twice as bright */
+uint8_t ri = 240;    /* Red LED Intensity */
+uint8_t gi = 240;    /* Green LED Intensity */
+uint8_t bi = 240;    /* Blue LED Intensity */
+
 /*
  * In case of fault, print to serial monitor, turn on the Nano LED and hang.
  */
@@ -118,6 +124,11 @@ void rtc_sq_isr() {
 
 void enc_sw_isr() {
   enc_sw_interrupt = HIGH;
+}
+
+/* Convert between 24 hour and 12 hour format. */
+inline uint8_t TwentyFourToTwelve(uint8_t twenty_four) {
+  return (twenty_four >= 12) ? twenty_four - 12 : twenty_four;
 }
 
 /*
@@ -199,45 +210,27 @@ public:
     this->update_display();
   };
 
-  void set_hour_pixel_colour(void) {
-    if (this->hour < 12) {    // In AM - Hour indicator is red
-      this->hour_r = 60;
-      this->hour_b = 0;
-     }
-     else {                   // In PM - Hour indicator is Blue
-      this->hour_b = 60;
-      this->hour_r = 0;
-     }    
-  };
-
   virtual void init_display(void) {
     DateTime time_now = rtc.now();
 
     this->hour = time_now.hour();
-    this->set_hour_pixel_colour();
-    
-    for(int idx=0; idx < NEO_MAX; idx++) {
-      if ((idx % 5) == 0) 
-        np60.setPixelColor(idx, 0, 0, 0, 30);
-      else
-        np60.setPixelColor(idx, 0, 0, 0, 0);
 
-    int hour_pixel = (this->hour < 12) ? this->hour * 5 : (this->hour-12) * 5;
-    np60.setPixelColor(hour_pixel, this->hour_r,  0, this->hour_b, 1);
-    np60.show();
-    this->prev = hour_pixel;
+    for(int idx=0; idx < NEO_MAX; idx++) {
+      np60.setPixelColor(idx, 0 , 0, 0, ((idx % 5) == 0) ? wi : 0);
     }
+    
+    np60.setPixelColor(TwentyFourToTwelve(this->hour) * 5, ri, 0, 0, 0);
+    np60.show();
+    this->prev = this->hour;
   };
 
   virtual void update_display(void) {
      int hour_pixel = (this->hour < 12) ? this->hour * 5 : (this->hour-12) * 5;
-     
-     this->set_hour_pixel_colour();
-     
-     np60.setPixelColor(this->prev, 0, 0, 0, 1);
-     np60.setPixelColor(hour_pixel, this->hour_r, 0, this->hour_b, 1);
+          
+     np60.setPixelColor(TwentyFourToTwelve(this->prev) * 5, 0, 0, 0, wi);
+     np60.setPixelColor(TwentyFourToTwelve(this->hour) * 5, ri, 0, 0, 0);
      np60.show();
-     this->prev = hour_pixel;    
+     this->prev = this->hour;    
   };
 
   virtual void final(void) {
@@ -280,13 +273,10 @@ public:
     this->minute = time_now.minute();
     
     for(int idx=0; idx < NEO_MAX; idx++) {
-      white =  ((idx % 5) == 0) ? 1 : 0;
-      np60.setPixelColor(idx, 0, 0, 0, white);
+      np60.setPixelColor(idx, 0, 0, 0, ((idx % 5) == 0) ? wi : 0);
     }
 
-    white = ((this->minute % 5) == 0) ? 30 : 0;
-
-    np60.setPixelColor(this->minute, 0,  60, 0, white);
+    np60.setPixelColor(this->minute, 0,  gi, 0, 0);
     np60.show();
     this->prev = this->minute;
   }
@@ -294,10 +284,8 @@ public:
   void update_display(void) {
      int white = ((this->prev % 5) == 0) ? 30 : 0;
      
-     np60.setPixelColor(this->prev, 0, 0, 0, white);
-     
-     white = ((this->minute % 5) == 0) ? 30 : 0;
-     np60.setPixelColor(this->minute, 0, 60, 0, white);
+     np60.setPixelColor(this->prev, 0, 0, 0, ((this->prev % 5) == 0) ? wi : 0);
+     np60.setPixelColor(this->minute, 0, gi, 0, 0);
      
      np60.show();
      this->prev = this->minute;    
@@ -336,77 +324,47 @@ void DecodeRGBW(const uint32_t color, uint8_t *r, uint8_t *g, uint8_t *b, uint8_
   *b = (uint8_t)(color & 0xFF);
 }
 
-inline uint8_t TwentyFourToTwelve(uint8_t twenty_four) {
-  return (twenty_four >= 12) ? twenty_four - 12 : twenty_four;
-}
-
 class AnalogTimeDisplay: public BaseTimeDisplay {
 public:
   AnalogTimeDisplay(Adafruit_NeoPixel &r60) : BaseTimeDisplay(r60) {};
 
   void Display(const DateTime &tn) {
-    uint8_t hr = TwentyFourToTwelve(tn.hour()) * 5;
-    uint8_t w, r, g, b;
-
     for(int idx=0; idx < NEO_MAX; idx++) {
-      w =  ((idx % 5) == 0) ? 10 : 0;
-      np60.setPixelColor(idx, 0, 0, 0, w);
+      np60.setPixelColor(idx, 0, 0, 0, ((idx % 5) == 0) ? wi : 0);
     }
 
-    DecodeRGBW(ring60.getPixelColor(hr), &r, &g, &b, &w);
-    ring60.setPixelColor(hr, 60, 0, 0, w);
-    
-    DecodeRGBW(ring60.getPixelColor(tn.minute()), &r, &g, &b, &w);
-    ring60.setPixelColor(tn.minute(), 0, 60, 0, w);   
-
-    DecodeRGBW(ring60.getPixelColor(tn.second()), &r, &g, &b, &w);
-    ring60.setPixelColor(tn.second(), 0, 0, 60, w);  
-
+    ring60.setPixelColor(TwentyFourToTwelve(tn.hour()) * 5, ri, 0, 0, 0);
+    ring60.setPixelColor(tn.minute(), 0, gi, 0, 0);   
+    ring60.setPixelColor(tn.second(), 0, 0, bi, 0);  
     ring60.show();
   };
 
   void Update(const DateTime &tn, const DateTime &tt) {
     uint8_t hn = TwentyFourToTwelve(tn.hour()) * 5;
     uint8_t ht = TwentyFourToTwelve(tt.hour()) * 5;
-    uint8_t w, r, g, b;
 
-    if (hn != ht) {
-      DecodeRGBW(ring60.getPixelColor(ht), &r, &g, &b, &w);
-      ring60.setPixelColor(ht, 0, 0, 0, w);
-      DecodeRGBW(ring60.getPixelColor(hn), &r, &g, &b, &w);
-      ring60.setPixelColor(hn, 60, 0, 0, w);
+    if (tn.hour() != tt.hour()) {
+      ring60.setPixelColor(TwentyFourToTwelve(tt.hour()) * 5, 0, 0, 0, wi);
+      ring60.setPixelColor(TwentyFourToTwelve(tn.hour()) * 5, ri, 0, 0, 0);
     }
 
     if (tn.minute() != tt.minute()) {
-      DecodeRGBW(ring60.getPixelColor(tt.minute()), &r, &g, &b, &w);
-      if (tt.minute() == hn) r = 60;
-      ring60.setPixelColor(tt.minute(), r, 0, 0, w);
-      DecodeRGBW(ring60.getPixelColor(tn.minute()), &r, &g, &b, &w);
-      ring60.setPixelColor(tn.minute(), 0, 60, 0, w);
+      if (tt.minute() == (TwentyFourToTwelve(tn.hour()) * 5)) 
+        ring60.setPixelColor(tt.minute(), ri, 0, 0);
+      else
+        ring60.setPixelColor(tt.minute(), 0, 0, 0, ((tt.minute() % 5) == 0) ? wi : 0);
+      ring60.setPixelColor(tn.minute(), 0, gi, 0, 0);
     }
 
     if (tn.second() != tt.second()) {
-      DecodeRGBW(ring60.getPixelColor(tt.second()), &r, &g, &b, &w);
-      PRINT(r);
-      PRINT(":");
-      PRINT(g);
-      PRINT(":");
-      PRINT(b);
-      PRINT(":");
-      PRINTLN(w);
-      
-      if (tt.second() == hn) {
-        r = 60;
-        g = 0;
-      }
-      if (tt.second() == tn.minute()) {
-        r = 0;
-        g = 60;
-      }
-      ring60.setPixelColor(tt.second(), r, g, 0, w);
-      DecodeRGBW(ring60.getPixelColor(tn.second()), &r, &g, &b, &w);
-      ring60.setPixelColor(tn.second(), 0, 0, 60, w);
-    }  
+      if (tt.second() == tn.minute())
+        ring60.setPixelColor(tt.second(), 0, gi, 0);
+      else if (tt.second() == (TwentyFourToTwelve(tn.hour()) * 5)) 
+        ring60.setPixelColor(tt.second(), ri, 0, 0);
+      else
+        ring60.setPixelColor(tt.second(), 0, 0, 0, ((tt.second() % 5) == 0) ? wi : 0);
+      ring60.setPixelColor(tn.second(), 0, 0, bi, 0);
+    }
 
     ring60.show();
   };
