@@ -179,7 +179,17 @@ void encoder_rgb_led(byte red, byte green, byte blue) {
 }
 
 void debounce_enc_switch(void) {
+  byte count = 0;
   while(digitalRead(ENC_SW));
+
+
+  while(count < 10)
+    {
+    if (digitalRead(ENC_SW) == 0)
+      count++;
+    else
+      count = 0;
+    }   
   enc_sw_interrupt = LOW;
 }
 
