@@ -678,8 +678,16 @@ private:
   uint8_t rgbw[4];
 };
 
+/*
+ * The different display modes.
+ */
+AnalogTimeDisplay analog  = AnalogTimeDisplay(np60);
+PulseTimeDisplay pulse    = PulseTimeDisplay(np60);
+PastelTimeDisplay pastel  = PastelTimeDisplay(np60);
 
-PastelTimeDisplay atd = PastelTimeDisplay(np60);
+BaseTimeDisplay *dm[] = { &analog, &pulse, & pastel };
+const int disp_mode_max = sizeof(dm) / sizeof(BaseTimeDisplay*);
+int mode;
 
 /*
  * Setup and intialisation
@@ -733,7 +741,8 @@ void setup() {
 
   // Display Time - default display mode
   PRINTLN(".. Displaying time - default display mode");
-  atd.Display(dt_now);
+  mode = 0;
+  dm[mode]->Display(dt_now);
 
   PRINTLN("Setup completed.");
 }
@@ -757,7 +766,7 @@ void loop() {
     encoder_rgb_led(OFF, OFF, OFF);
 
     dt_now = rtc.now();
-    atd.Display(dt_now);
+    dm[mode]->Display(dt_now);
   }
   if (rtc_sq_interrupt) {
     rtc_sq_interrupt = LOW;
@@ -770,7 +779,7 @@ void loop() {
     //PRINT(":"); 
     //PRINTLN(dt_now.second());
 
-    atd.Update(dt_now, dt_then);
+    dm[mode]->Update(dt_now, dt_then);
 
     dt_then = dt_now;
   }
