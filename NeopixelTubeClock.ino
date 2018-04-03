@@ -57,11 +57,20 @@
 #define ENC_SW  (3)
 #define ENC_BLU (9)
 
- /*
-  * Defines for indicating the Encoder's RGB LED 
-  */
+/*
+ * Defines for indicating the Encoder's RGB LED 
+ */
 #define LED_OFF (0)
 #define LED_ON  (1)
+
+
+/*
+ * defined indexes for Red, Green, Blue, White
+ */
+#define RED   0
+#define GREEN 1
+#define BLUE  2
+#define WHITE 4
 
 /*
  * Serial Monitor Debug instrumentation
@@ -137,10 +146,10 @@ volatile byte rtc_sq_interrupt = LOW;
 volatile byte enc_sw_interrupt = LOW;
 
 
-uint8_t wi = 130;    /* White LED Intensity - white is generally twice as bright */
-uint8_t ri = 240;    /* Red LED Intensity */
-uint8_t gi = 240;    /* Green LED Intensity */
-uint8_t bi = 240;    /* Blue LED Intensity */
+uint8_t wi = 30;    /* White LED Intensity - white is generally twice as bright */
+uint8_t ri = 60;    /* Red LED Intensity */
+uint8_t gi = 60;    /* Green LED Intensity */
+uint8_t bi = 60;    /* Blue LED Intensity */
 
 /*
  * In case of fault, print to serial monitor, turn on the Nano LED and hang.
@@ -163,8 +172,8 @@ void enc_sw_isr() {
 }
 
 /* Convert between 24 hour and 12 hour format. */
-inline uint8_t TwentyFourToTwelve(uint8_t twenty_four) {
-  return (twenty_four >= 12) ? twenty_four - 12 : twenty_four;
+inline uint8_t HourToPixel(uint8_t twenty_four) {
+  return (twenty_four % 12) * 5;
 }
 
 /*
@@ -178,19 +187,28 @@ void encoder_rgb_led(byte red, byte green, byte blue) {
   digitalWrite(ENC_BLU, (blue) ? LOW : HIGH);
 }
 
-void debounce_enc_switch(void) {
-  byte count = 0;
-  while(digitalRead(ENC_SW));
+bool debounce_enc_switch(int time_ms) {
+  int lo_count = 0;
+  long unsigned start = millis();
+  long unsigned finish;
+  
+  while(digitalRead(ENC_SW) == HIGH);
 
-
-  while(count < 10)
+  // debounce the release
+  while(lo_count < 100)
     {
-    if (digitalRead(ENC_SW) == 0)
-      count++;
+    if (digitalRead(ENC_SW) == LOW)
+      lo_count++;
     else
-      count = 0;
+      lo_count = 0;
     }   
+
+  // How long is the button held down
+  finish = millis();
+
   enc_sw_interrupt = LOW;
+ 
+  return (time_ms > (finish - start)) ? false : true;
 }
 
 /*!
@@ -209,8 +227,6 @@ public:
     byte enc_a;
     byte enc_b;
     byte prev_enc_a=0;
-
-    debounce_enc_switch();
 
     this->set_encoder_led();
     this->init_display();
@@ -265,7 +281,7 @@ public:
       np60.setPixelColor(idx, 0 , 0, 0, ((idx % 5) == 0) ? wi : 0);
     }
     
-    np60.setPixelColor(TwentyFourToTwelve(this->hour) * 5, ri, 0, 0, 0);
+    np60.setPixelColor(HourToPixel(this->hour), ri, 0, 0, 0);
     np60.show();
     this->prev = this->hour;
   };
@@ -273,8 +289,8 @@ public:
   virtual void update_display(void) {
      int hour_pixel = (this->hour < 12) ? this->hour * 5 : (this->hour-12) * 5;
           
-     np60.setPixelColor(TwentyFourToTwelve(this->prev) * 5, 0, 0, 0, wi);
-     np60.setPixelColor(TwentyFourToTwelve(this->hour) * 5, ri, 0, 0, 0);
+     np60.setPixelColor(HourToPixel(this->prev), 0, 0, 0, wi);
+     np60.setPixelColor(HourToPixel(this->hour), ri, 0, 0, 0);
      np60.show();
      this->prev = this->hour;    
   };
@@ -409,6 +425,51 @@ public:
   };
 };
 
+class set_brightness : public set_base {
+public:
+  void set_encoder_led(void) {
+    encoder_rgb_led(LED_ON, LED_ON, LED_OFF); // Yellow
+  }
+
+  void enc_left(void) {
+    wi = (wi == 120) ? 30 : wi + 30;
+    ri = wi * 2;
+    gi = wi * 2;
+    bi = wi * 2;
+    this->init_display();
+  }
+
+  void enc_right(void) {
+    wi = (wi == 30) ? 120 : wi - 30;
+    ri = wi * 2;
+    gi = wi * 2;
+    bi = wi * 2;
+    this->init_display();
+  }
+
+  void init_display(void) {
+    for(int idx=0; idx < NEO_MAX; idx++) {
+
+      if ((idx % 15) == 0)
+        np60.setPixelColor(idx, ri, 0, 0, 0);
+      else if ((idx % 10) == 0)
+        np60.setPixelColor(idx, 0, gi, 0, 0);
+      else if ((idx % 5) == 0)
+        np60.setPixelColor(idx, 0, 0, bi, 0);
+      else 
+        np60.setPixelColor(idx, 0, 0, bi, wi);
+    }
+
+    np60.show();
+  }
+
+  void update_display(void) {  
+  };
+
+  void final(void) {
+  };
+};
+
 
 class BaseTimeDisplay {
 public:
@@ -428,26 +489,26 @@ public:
 
   void Display(const DateTime &tn) {
     for(int idx=0; idx < NEO_MAX; idx++) {
-      np60.setPixelColor(idx, 0, 0, 0, ((idx % 5) == 0) ? wi : 0);
+      ring60.setPixelColor(idx, 0, 0, 0, ((idx % 5) == 0) ? wi : 0);
     }
 
-    ring60.setPixelColor(TwentyFourToTwelve(tn.hour()) * 5, ri, 0, 0, 0);
+    ring60.setPixelColor(HourToPixel(tn.hour()), ri, 0, 0, 0);
     ring60.setPixelColor(tn.minute(), 0, gi, 0, 0);   
     ring60.setPixelColor(tn.second(), 0, 0, bi, 0);  
     ring60.show();
   };
 
   void Update(const DateTime &tn, const DateTime &tt) {
-    uint8_t hn = TwentyFourToTwelve(tn.hour()) * 5;
-    uint8_t ht = TwentyFourToTwelve(tt.hour()) * 5;
+    uint8_t hn = HourToPixel(tn.hour());
+    uint8_t ht = HourToPixel(tt.hour()) * 5;
 
     if (tn.hour() != tt.hour()) {
-      ring60.setPixelColor(TwentyFourToTwelve(tt.hour()) * 5, 0, 0, 0, wi);
-      ring60.setPixelColor(TwentyFourToTwelve(tn.hour()) * 5, ri, 0, 0, 0);
+      ring60.setPixelColor(HourToPixel(tt.hour()), 0, 0, 0, wi);
+      ring60.setPixelColor(HourToPixel(tn.hour()), ri, 0, 0, 0);
     }
 
     if (tn.minute() != tt.minute()) {
-      if (tt.minute() == (TwentyFourToTwelve(tn.hour()) * 5)) 
+      if (tt.minute() == HourToPixel(tn.hour())) 
         ring60.setPixelColor(tt.minute(), ri, 0, 0, 0);
       else
         ring60.setPixelColor(tt.minute(), 0, 0, 0, ((tt.minute() % 5) == 0) ? wi : 0);
@@ -457,7 +518,7 @@ public:
     if (tn.second() != tt.second()) {
       if (tt.second() == tn.minute())
         ring60.setPixelColor(tt.second(), 0, gi, 0, 0);
-      else if (tt.second() == (TwentyFourToTwelve(tn.hour()) * 5)) 
+      else if (tt.second() == HourToPixel(tn.hour()))
         ring60.setPixelColor(tt.second(), ri, 0, 0, 0);
       else
         ring60.setPixelColor(tt.second(), 0, 0, 0, ((tt.second() % 5) == 0) ? wi : 0);
@@ -469,7 +530,156 @@ public:
 
 };
 
-AnalogTimeDisplay atd = AnalogTimeDisplay(np60);
+/* 
+ *  Hours is 5 pixels
+ *  Minutes is 3 pixels 
+ *  Seconds is 1 Pixel. 
+ *  Seconds overlays minutes, which overlays hours.
+ */
+class PulseTimeDisplay: public BaseTimeDisplay {
+public:
+  PulseTimeDisplay(NeoPixelOffset &r60) : BaseTimeDisplay(r60) {};
+
+  void Display(const DateTime &tn) {
+    this->fi = ri/60;
+    
+    for(int idx=0; idx < NEO_MAX; idx++) {
+      np60.setPixelColor(idx, 0, 0, 0, 0);
+    }
+
+    ring60.setPixelColor(HourToPixel(tn.hour()), ri, 0, 0, 0);
+    ring60.setPixelColor(tn.minute(), 0, gi, 0, 0);   
+    ring60.setPixelColor(tn.second(), 0, 0, bi, 0);  
+    ring60.show();
+  };
+
+  void Update(const DateTime &tn, const DateTime &tt) {
+    uint8_t h = HourToPixel(tn.hour());
+    uint8_t m = tn.minute();
+    uint8_t s = tn.second();
+    uint8_t r=ri, g=gi, b=bi;
+
+    ring60.setPixelColor(h, r, 0, 0, 0);
+    ring60.setPixelColor(m, 0, g, 0, 0);   
+    ring60.setPixelColor(s, 0, 0, b, 0); 
+    ring60.show();
+    
+    for (uint8_t idx=0; idx<NEO_MAX; idx++)
+    {
+      r = (r>0) ? r - fi: 0;
+      g = (g>0) ? g - fi: 0;
+      b = (b>0) ? b - fi: 0;
+      
+      ring60.setPixelColor(h, r, 0, 0, 0);
+      ring60.setPixelColor(m, 0, g, 0, 0);   
+      ring60.setPixelColor(s, 0, 0, b, 0); 
+      ring60.show();
+
+      delay(10);
+    }
+  } 
+
+private:
+  uint8_t fi = 0;
+};
+
+/* 
+ *  This display mode is not affected by the brightness setting and doesn't really show the
+ *  time. It's just a pastel ring that rotates anticlockwise once per minute.
+ */
+class PastelRing: public BaseTimeDisplay {
+public:
+  PastelRing(NeoPixelOffset &r60) : BaseTimeDisplay(r60) {};
+
+  void pastel(int pixel, uint8_t cidx) {
+    uint8_t index;
+    int brg = 0;
+    int stp = 10;
+   
+    for (int offset=0; offset<40; offset++) {
+      index = (uint8_t)((pixel + offset) % 60);
+      ring60.getPixelColor(index, &rgbw[RED], &rgbw[GREEN], &rgbw[BLUE], &rgbw[WHITE]);
+      brg += stp;
+      rgbw[cidx] = (uint8_t)(brg);
+      ring60.setPixelColor(index, rgbw[RED], rgbw[GREEN], rgbw[BLUE], 0);
+      if (brg == 200) stp = -10;
+    }
+  };
+  
+  void Display(const DateTime &tn) {
+    for (int i=0; i<NEO_MAX; i++)
+      ring60.setPixelColor(i, 0, 0, 0, 0);
+    this->pastel(0, RED);
+    this->pastel(20, GREEN);
+    this->pastel(40, BLUE);
+    ring60.show();
+  };
+
+  void Update(const DateTime &tn, const DateTime &tt) { 
+    uint8_t r, g, b, w;
+
+    ring60.getPixelColor(0, &r, &g, &b, &w);
+    for (int i=1; i<NEO_MAX; i++) {
+      ring60.getPixelColor(i, &rgbw[RED], &rgbw[GREEN], &rgbw[BLUE], &rgbw[WHITE]);
+      ring60.setPixelColor(i-1, rgbw[RED], rgbw[GREEN], rgbw[BLUE], 0);
+    }
+    ring60.setPixelColor(NEO_MAX-1, r, g, b, 0);
+    ring60.show();
+  };
+  
+private:
+  uint8_t rgbw[4];
+};
+
+/* 
+ *  This display mode is not affected by the brightness setting.
+ */
+class PastelTimeDisplay: public BaseTimeDisplay {
+public:
+  PastelTimeDisplay(NeoPixelOffset &r60) : BaseTimeDisplay(r60) {};
+
+  void pastel(int pixel, uint8_t cidx) {
+    uint8_t index;
+    int brg = ri/2;
+    int stp = (ri/2) / 30;
+
+    // The first pixel is double brightness
+    ring60.getPixelColor(pixel, &rgbw[RED], &rgbw[GREEN], &rgbw[BLUE], &rgbw[WHITE]);
+    rgbw[cidx] = (uint8_t)(ri);
+    ring60.setPixelColor(pixel, rgbw[RED], rgbw[GREEN], rgbw[BLUE], 0);
+
+    // Trailing pixels start half as bright and fade out.
+    for (int offset=1; offset<30; offset++) {
+      brg -= stp;
+
+      index = (uint8_t)(((pixel-offset) >= 0) ? pixel-offset : (pixel+60)-offset);
+      ring60.getPixelColor(index, &rgbw[RED], &rgbw[GREEN], &rgbw[BLUE], &rgbw[WHITE]);
+      rgbw[cidx] = (uint8_t)(brg);
+      ring60.setPixelColor(index, rgbw[RED], rgbw[GREEN], rgbw[BLUE], 0);
+    }
+  };
+  
+  void Display(const DateTime &tn) {
+    for (int i=0; i<NEO_MAX; i++)
+      ring60.setPixelColor(i, 0, 0, 0, 0);
+
+    this->pastel(HourToPixel(tn.hour()), RED);
+    this->pastel(tn.minute(), GREEN);
+    this->pastel(tn.second(), BLUE);
+    
+    ring60.show();
+  };
+
+  void Update(const DateTime &tn, const DateTime &tt) { 
+     Display(tn);
+  };
+  
+private:
+  uint8_t rgbw[4];
+};
+
+
+PastelTimeDisplay atd = PastelTimeDisplay(np60);
 
 /*
  * Setup and intialisation
@@ -512,7 +722,7 @@ void setup() {
   pinMode(ENC_BLU, OUTPUT);
   pinMode(ENC_GRE, OUTPUT);
 
-  attachInterrupt(digitalPinToInterrupt(ENC_SW), enc_sw_isr, FALLING);
+  attachInterrupt(digitalPinToInterrupt(ENC_SW), enc_sw_isr, RISING);
 
   // Initially the Encoder LED are all off
   encoder_rgb_led(LED_OFF, LED_OFF, LED_OFF);
@@ -531,13 +741,20 @@ void setup() {
 void loop() {
   if (enc_sw_interrupt) {
     PRINTLN("ENC_SW");
-    
-    set_hour().action();
-    set_minute().action();
-    set_second().action();
-    
+
+    if (debounce_enc_switch(500)) {   // Long Press
+      set_hour().action();
+      debounce_enc_switch(0);
+      set_minute().action();
+      debounce_enc_switch(0);
+      set_second().action();
+    } 
+    else {// Short press
+      set_brightness().action();
+    }
+    debounce_enc_switch(0);
+   
     encoder_rgb_led(OFF, OFF, OFF);
-    debounce_enc_switch();
 
     dt_now = rtc.now();
     atd.Display(dt_now);
