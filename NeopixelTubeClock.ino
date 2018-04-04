@@ -70,14 +70,14 @@
 #define RED   0
 #define GREEN 1
 #define BLUE  2
-#define WHITE 4
+#define WHITE 3
 
 /*
  * Serial Monitor Debug instrumentation
  * 
  * comment out #define DEBUG_PRINT to disable.
  */
-#define DEBUG_PRINT
+//#define DEBUG_PRINT
 #ifdef DEBUG_PRINT
 #define PRINT_INIT(X) Serial.begin((X))
 #define PRINT(X) Serial.print(X)
@@ -195,7 +195,7 @@ bool debounce_enc_switch(int time_ms) {
   while(digitalRead(ENC_SW) == HIGH);
 
   // debounce the release
-  while(lo_count < 100)
+  while(lo_count < 300)
     {
     if (digitalRead(ENC_SW) == LOW)
       lo_count++;
@@ -210,266 +210,6 @@ bool debounce_enc_switch(int time_ms) {
  
   return (time_ms > (finish - start)) ? false : true;
 }
-
-/*!
- * @brief Base class for changing a setting.
- */
-class set_base {
-public:
-  virtual void set_encoder_led(void) { PRINTLN("set_base->set_encoder_led"); }
-  virtual void enc_left(void) { PRINTLN("set_base->enc_left"); }
-  virtual void enc_right(void) { PRINTLN("set_base->enc_right"); }
-  virtual void init_display(void) { PRINTLN("set_base->init_display"); }
-  virtual void update_display(void) { PRINTLN("set_base->update_display"); }
-  virtual void final(void) { PRINTLN("set_base->final"); }
-
-  void action(void) {
-    byte enc_a;
-    byte enc_b;
-    byte prev_enc_a=0;
-
-    this->set_encoder_led();
-    this->init_display();
-
-    // Loop until the Encoder Switch is activated again.
-    while(enc_sw_interrupt == LOW) {
-      enc_a = digitalRead(ENC_A);
-      enc_b = digitalRead(ENC_B);
-
-      if (!enc_a && prev_enc_a) {
-        if (enc_b) {
-          this->enc_left();
-        }
-        else { 
-          this->enc_right();
-        }
-      }
-      prev_enc_a = enc_a;
-      delay(1);
-    }
-    this->final();
-  };
-};
-
-class set_hour : public set_base {
-public:
-  int hour;
-  int hour_r;
-  int hour_b;
-  int prev;
-
-  void set_encoder_led(void) {
-    encoder_rgb_led(LED_ON, LED_OFF, LED_OFF); // Red
-  };
-
-  virtual void enc_left(void) {
-    this->hour = (this->hour == 23) ? 0 : this->hour + 1;
-    this->update_display();
-  };
-
-  virtual void enc_right(void) {
-    this->hour = (this->hour == 0) ? 23 : this->hour - 1;
-    this->update_display();
-  };
-
-  virtual void init_display(void) {
-    DateTime time_now = rtc.now();
-
-    this->hour = time_now.hour();
-
-    for(int idx=0; idx < NEO_MAX; idx++) {
-      np60.setPixelColor(idx, 0 , 0, 0, ((idx % 5) == 0) ? wi : 0);
-    }
-    
-    np60.setPixelColor(HourToPixel(this->hour), ri, 0, 0, 0);
-    np60.show();
-    this->prev = this->hour;
-  };
-
-  virtual void update_display(void) {
-     int hour_pixel = (this->hour < 12) ? this->hour * 5 : (this->hour-12) * 5;
-          
-     np60.setPixelColor(HourToPixel(this->prev), 0, 0, 0, wi);
-     np60.setPixelColor(HourToPixel(this->hour), ri, 0, 0, 0);
-     np60.show();
-     this->prev = this->hour;    
-  };
-
-  virtual void final(void) {
-    DateTime time_now = rtc.now();
-    DateTime new_time = DateTime(
-      time_now.year(),
-      time_now.month(),
-      time_now.day(),
-      this->hour,
-      time_now.minute(),
-      time_now.second()
-      );
-    rtc.adjust(new_time);
-  };
-};
-
-class set_minute : public set_base {
-public:
-  int minute;
-  int prev;
-
-  void set_encoder_led(void) {
-    encoder_rgb_led(LED_OFF, LED_ON, LED_OFF); // green
-  }
-
-  void enc_left(void) {
-    this->minute = (this->minute == 59) ? 0 : this->minute + 1;
-    this->update_display();
-  }
-
-  void enc_right(void) {
-    this->minute = (this->minute == 0) ? 59 : this->minute - 1;
-    this->update_display();
-  }
-
-  void init_display(void) {
-    DateTime time_now = rtc.now();
-    int white;
-
-    this->minute = time_now.minute();
-    
-    for(int idx=0; idx < NEO_MAX; idx++) {
-      np60.setPixelColor(idx, 0, 0, 0, ((idx % 5) == 0) ? wi : 0);
-    }
-
-    np60.setPixelColor(this->minute, 0,  gi, 0, 0);
-    np60.show();
-    this->prev = this->minute;
-  }
-
-  void update_display(void) {
-     int white = ((this->prev % 5) == 0) ? 30 : 0;
-     
-     np60.setPixelColor(this->prev, 0, 0, 0, ((this->prev % 5) == 0) ? wi : 0);
-     np60.setPixelColor(this->minute, 0, gi, 0, 0);
-     
-     np60.show();
-     this->prev = this->minute;    
-  };
-
-  void final(void) {
-    DateTime time_now = rtc.now();
-    DateTime new_time = DateTime(
-      time_now.year(),
-      time_now.month(),
-      time_now.day(),
-      time_now.hour(),
-      this->minute,
-      time_now.second()
-      );
-    rtc.adjust(new_time);
-  };
-};
-
-class set_second : public set_base {
-public:
-  int second;
-  int prev;
-
-  void set_encoder_led(void) {
-    encoder_rgb_led(LED_OFF, LED_OFF, LED_ON); // Blue
-  }
-
-  void enc_left(void) {
-    this->second = (this->second == 59) ? 0 : this->second + 1;
-    this->update_display();
-  }
-
-  void enc_right(void) {
-    this->second = (this->second == 0) ? 59 : this->second - 1;
-    this->update_display();
-  }
-
-  void init_display(void) {
-    DateTime time_now = rtc.now();
-    int white;
-
-    this->second = time_now.second();
-    
-    for(int idx=0; idx < NEO_MAX; idx++) {
-      np60.setPixelColor(idx, 0, 0, 0, ((idx % 5) == 0) ? wi : 0);
-    }
-
-    np60.setPixelColor(this->second, 0,  0, bi, 0);
-    np60.show();
-    this->prev = this->second;
-  }
-
-  void update_display(void) {
-     int white = ((this->prev % 5) == 0) ? 30 : 0;
-     
-     np60.setPixelColor(this->prev, 0, 0, 0, ((this->prev % 5) == 0) ? wi : 0);
-     np60.setPixelColor(this->second, 0, 0, bi, 0);
-     
-     np60.show();
-     this->prev = this->second;    
-  };
-
-  void final(void) {
-    DateTime time_now = rtc.now();
-    DateTime new_time = DateTime(
-      time_now.year(),
-      time_now.month(),
-      time_now.day(),
-      time_now.hour(),
-      time_now.minute(),
-      this->second
-      );
-    rtc.adjust(new_time);
-  };
-};
-
-class set_brightness : public set_base {
-public:
-  void set_encoder_led(void) {
-    encoder_rgb_led(LED_ON, LED_ON, LED_OFF); // Yellow
-  }
-
-  void enc_left(void) {
-    wi = (wi == 120) ? 30 : wi + 30;
-    ri = wi * 2;
-    gi = wi * 2;
-    bi = wi * 2;
-    this->init_display();
-  }
-
-  void enc_right(void) {
-    wi = (wi == 30) ? 120 : wi - 30;
-    ri = wi * 2;
-    gi = wi * 2;
-    bi = wi * 2;
-    this->init_display();
-  }
-
-  void init_display(void) {
-    for(int idx=0; idx < NEO_MAX; idx++) {
-
-      if ((idx % 15) == 0)
-        np60.setPixelColor(idx, ri, 0, 0, 0);
-      else if ((idx % 10) == 0)
-        np60.setPixelColor(idx, 0, gi, 0, 0);
-      else if ((idx % 5) == 0)
-        np60.setPixelColor(idx, 0, 0, bi, 0);
-      else 
-        np60.setPixelColor(idx, 0, 0, bi, wi);
-    }
-
-    np60.show();
-  }
-
-  void update_display(void) {  
-  };
-
-  void final(void) {
-  };
-};
-
 
 class BaseTimeDisplay {
 public:
@@ -538,13 +278,16 @@ public:
  */
 class PulseTimeDisplay: public BaseTimeDisplay {
 public:
-  PulseTimeDisplay(NeoPixelOffset &r60) : BaseTimeDisplay(r60) {};
+  PulseTimeDisplay(NeoPixelOffset &r60) : 
+    BaseTimeDisplay(r60),
+    fi(0)
+    {};
 
   void Display(const DateTime &tn) {
     this->fi = ri/60;
     
     for(int idx=0; idx < NEO_MAX; idx++) {
-      np60.setPixelColor(idx, 0, 0, 0, 0);
+      ring60.setPixelColor(idx, 0, 0, 0, 0);
     }
 
     ring60.setPixelColor(HourToPixel(tn.hour()), ri, 0, 0, 0);
@@ -566,21 +309,24 @@ public:
     
     for (uint8_t idx=0; idx<NEO_MAX; idx++)
     {
-      r = (r>0) ? r - fi: 0;
-      g = (g>0) ? g - fi: 0;
-      b = (b>0) ? b - fi: 0;
+      delay(10);
+
+      r = (r>0) ? r - this->fi: 0;
+      g = (g>0) ? g - this->fi: 0;
+      b = (b>0) ? b - this->fi: 0;
       
       ring60.setPixelColor(h, r, 0, 0, 0);
       ring60.setPixelColor(m, 0, g, 0, 0);   
       ring60.setPixelColor(s, 0, 0, b, 0); 
-      ring60.show();
 
-      delay(10);
+      if (enc_sw_interrupt) return;
+
+      ring60.show();
     }
   } 
 
 private:
-  uint8_t fi = 0;
+  uint8_t fi;
 };
 
 /* 
@@ -671,7 +417,7 @@ public:
   };
 
   void Update(const DateTime &tn, const DateTime &tt) { 
-     Display(tn);
+     this->Display(tn);
   };
   
 private:
@@ -685,9 +431,322 @@ AnalogTimeDisplay analog  = AnalogTimeDisplay(np60);
 PulseTimeDisplay pulse    = PulseTimeDisplay(np60);
 PastelTimeDisplay pastel  = PastelTimeDisplay(np60);
 
-BaseTimeDisplay *dm[] = { &analog, &pulse, & pastel };
+BaseTimeDisplay *dm[] = { &analog, &pulse, &pastel };
 const int disp_mode_max = sizeof(dm) / sizeof(BaseTimeDisplay*);
 int mode;
+
+/*!
+ * @brief Base class for changing a setting.
+ */
+class set_base {
+public:
+  virtual void set_encoder_led(void) { PRINTLN("set_base->set_encoder_led"); }
+  virtual void enc_left(void) { PRINTLN("set_base->enc_left"); }
+  virtual void enc_right(void) { PRINTLN("set_base->enc_right"); }
+  virtual void init_display(void) { PRINTLN("set_base->init_display"); }
+  virtual void update_display(void) { PRINTLN("set_base->update_display"); }
+  virtual void action_loop(void) { PRINTLN("set_base->action_loop"); }
+  virtual void final(void) { PRINTLN("set_base->final"); }
+
+  void action(void) {
+    byte enc_a;
+    byte enc_b;
+    byte prev_enc_a=0;
+
+    this->set_encoder_led();
+    this->init_display();
+
+    // Loop until the Encoder Switch is activated again.
+    while(enc_sw_interrupt == LOW) {
+      enc_a = digitalRead(ENC_A);
+      enc_b = digitalRead(ENC_B);
+
+      if (!enc_a && prev_enc_a) {
+        if (enc_b) {
+          this->enc_left();
+        }
+        else { 
+          this->enc_right();
+        }
+      }
+      prev_enc_a = enc_a;
+
+      /* What to do while looping - usually a small delay */
+      this->action_loop();
+    }
+    this->final();
+  };
+};
+
+class set_hour : public set_base {
+public:
+  int hour;
+  int hour_r;
+  int hour_b;
+  int prev;
+
+  void set_encoder_led(void) {
+    encoder_rgb_led(LED_ON, LED_OFF, LED_OFF); // Red
+  };
+
+  virtual void enc_left(void) {
+    this->hour = (this->hour == 23) ? 0 : this->hour + 1;
+    this->update_display();
+  };
+
+  virtual void enc_right(void) {
+    this->hour = (this->hour == 0) ? 23 : this->hour - 1;
+    this->update_display();
+  };
+
+  virtual void init_display(void) {
+    DateTime time_now = rtc.now();
+
+    this->hour = time_now.hour();
+
+    for(int idx=0; idx < NEO_MAX; idx++) {
+      np60.setPixelColor(idx, 0 , 0, 0, ((idx % 5) == 0) ? wi : 0);
+    }
+    
+    np60.setPixelColor(HourToPixel(this->hour), ri, 0, 0, 0);
+    np60.show();
+    this->prev = this->hour;
+  };
+
+  virtual void update_display(void) {
+     int hour_pixel = (this->hour < 12) ? this->hour * 5 : (this->hour-12) * 5;
+          
+     np60.setPixelColor(HourToPixel(this->prev), 0, 0, 0, wi);
+     np60.setPixelColor(HourToPixel(this->hour), ri, 0, 0, 0);
+     np60.show();
+     this->prev = this->hour;    
+  };
+
+  virtual void action_loop(void) { delay(1); };
+
+  virtual void final(void) {
+    DateTime time_now = rtc.now();
+    DateTime new_time = DateTime(
+      time_now.year(),
+      time_now.month(),
+      time_now.day(),
+      this->hour,
+      time_now.minute(),
+      time_now.second()
+      );
+    rtc.adjust(new_time);
+  };
+};
+
+class set_minute : public set_base {
+public:
+  int minute;
+  int prev;
+
+  void set_encoder_led(void) {
+    encoder_rgb_led(LED_OFF, LED_ON, LED_OFF); // green
+  }
+
+  void enc_left(void) {
+    this->minute = (this->minute == 59) ? 0 : this->minute + 1;
+    this->update_display();
+  }
+
+  void enc_right(void) {
+    this->minute = (this->minute == 0) ? 59 : this->minute - 1;
+    this->update_display();
+  }
+
+  void init_display(void) {
+    DateTime time_now = rtc.now();
+    int white;
+
+    this->minute = time_now.minute();
+    
+    for(int idx=0; idx < NEO_MAX; idx++) {
+      np60.setPixelColor(idx, 0, 0, 0, ((idx % 5) == 0) ? wi : 0);
+    }
+
+    np60.setPixelColor(this->minute, 0,  gi, 0, 0);
+    np60.show();
+    this->prev = this->minute;
+  }
+
+  void update_display(void) {
+     int white = ((this->prev % 5) == 0) ? 30 : 0;
+     
+     np60.setPixelColor(this->prev, 0, 0, 0, ((this->prev % 5) == 0) ? wi : 0);
+     np60.setPixelColor(this->minute, 0, gi, 0, 0);
+     
+     np60.show();
+     this->prev = this->minute;    
+  };
+
+  virtual void action_loop(void) { delay(1); };
+
+  void final(void) {
+    DateTime time_now = rtc.now();
+    DateTime new_time = DateTime(
+      time_now.year(),
+      time_now.month(),
+      time_now.day(),
+      time_now.hour(),
+      this->minute,
+      time_now.second()
+      );
+    rtc.adjust(new_time);
+  };
+};
+
+class set_second : public set_base {
+public:
+  int second;
+  int prev;
+
+  void set_encoder_led(void) {
+    encoder_rgb_led(LED_OFF, LED_OFF, LED_ON); // Blue
+  }
+
+  void enc_left(void) {
+    this->second = (this->second == 59) ? 0 : this->second + 1;
+    this->update_display();
+  }
+
+  void enc_right(void) {
+    this->second = (this->second == 0) ? 59 : this->second - 1;
+    this->update_display();
+  }
+
+  void init_display(void) {
+    DateTime time_now = rtc.now();
+    int white;
+
+    this->second = time_now.second();
+    
+    for(int idx=0; idx < NEO_MAX; idx++) {
+      np60.setPixelColor(idx, 0, 0, 0, ((idx % 5) == 0) ? wi : 0);
+    }
+
+    np60.setPixelColor(this->second, 0,  0, bi, 0);
+    np60.show();
+    this->prev = this->second;
+  }
+
+  void update_display(void) {
+     int white = ((this->prev % 5) == 0) ? 30 : 0;
+     
+     np60.setPixelColor(this->prev, 0, 0, 0, ((this->prev % 5) == 0) ? wi : 0);
+     np60.setPixelColor(this->second, 0, 0, bi, 0);
+     
+     np60.show();
+     this->prev = this->second;    
+  };
+
+  virtual void action_loop(void) { delay(1); };
+
+  void final(void) {
+    DateTime time_now = rtc.now();
+    DateTime new_time = DateTime(
+      time_now.year(),
+      time_now.month(),
+      time_now.day(),
+      time_now.hour(),
+      time_now.minute(),
+      this->second
+      );
+    rtc.adjust(new_time);
+  };
+};
+
+class set_brightness : public set_base {
+public:
+  void set_encoder_led(void) {
+    encoder_rgb_led(LED_OFF, LED_ON, LED_ON); // Cyan
+  }
+
+  void enc_left(void) {
+    wi = (wi == 120) ? 30 : wi + 30;
+    ri = wi * 2;
+    gi = wi * 2;
+    bi = wi * 2;
+    this->init_display();
+  }
+
+  void enc_right(void) {
+    wi = (wi == 30) ? 120 : wi - 30;
+    ri = wi * 2;
+    gi = wi * 2;
+    bi = wi * 2;
+    this->init_display();
+  }
+
+  void init_display(void) {
+    for(int idx=0; idx < NEO_MAX; idx++) {
+
+      if ((idx % 15) == 0)
+        np60.setPixelColor(idx, ri, 0, 0, 0);
+      else if ((idx % 10) == 0)
+        np60.setPixelColor(idx, 0, gi, 0, 0);
+      else if ((idx % 5) == 0)
+        np60.setPixelColor(idx, 0, 0, bi, 0);
+      else 
+        np60.setPixelColor(idx, 0, 0, bi, wi);
+    }
+
+    np60.show();
+  }
+
+  void update_display(void) {  
+  };
+
+  virtual void action_loop(void) { delay(1); };
+
+  void final(void) {
+  };
+};
+
+class set_display : public set_base {
+public:
+  void set_encoder_led(void) {
+    encoder_rgb_led(LED_ON, LED_OFF, LED_ON); // purple
+  }
+
+  void enc_left(void) {
+    mode = (mode + 1) % disp_mode_max;
+
+    this->init_display();
+  }
+
+  void enc_right(void) {
+    mode = (mode == 0) ? disp_mode_max-1 : mode - 1;
+    this->init_display();
+  }
+
+  void init_display(void) {
+    PRINT("Display Mode = ");
+    PRINTLN(mode);
+    delay(300);
+    dt_now = rtc.now();
+    dm[mode]->Display(dt_now);
+  }
+
+  void update_display(void) {  
+  };
+
+  virtual void action_loop(void) {
+    //if (rtc_sq_interrupt) {
+    //  rtc_sq_interrupt = LOW;
+    //  dt_now = rtc.now();
+    //  dm[mode]->Update(dt_now, dt_then);
+    //  dt_then = dt_now;
+    //}
+    delay(1);
+  };
+
+  void final(void) {
+  };
+  
+};
 
 /*
  * Setup and intialisation
@@ -740,14 +799,18 @@ void setup() {
   np60.begin();
 
   // Display Time - default display mode
-  PRINTLN(".. Displaying time - default display mode");
+  PRINT(".. Displaying time - default mode (");
   mode = 0;
   dm[mode]->Display(dt_now);
+  PRINT(disp_mode_max);
+  PRINTLN(" Display modes available)");
 
   PRINTLN("Setup completed.");
 }
 
 void loop() {
+
+  
   if (enc_sw_interrupt) {
     PRINTLN("ENC_SW");
 
@@ -760,6 +823,8 @@ void loop() {
     } 
     else {// Short press
       set_brightness().action();
+      debounce_enc_switch(0);
+      set_display().action();
     }
     debounce_enc_switch(0);
    
@@ -772,16 +837,7 @@ void loop() {
     rtc_sq_interrupt = LOW;
 
     dt_now = rtc.now();
-
-    //PRINT(dt_now.hour());
-    //PRINT(":"); 
-    //PRINT(dt_now.minute());
-    //PRINT(":"); 
-    //PRINTLN(dt_now.second());
-
     dm[mode]->Update(dt_now, dt_then);
-
     dt_then = dt_now;
   }
-
 }
