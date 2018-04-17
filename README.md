@@ -63,6 +63,8 @@ and OTHER [Neopixel Clock](https://github.com/peverett/NeopixelClock) projects.
 Honestly, there was a lot of hot glue used too. It's a bit of a blur. However,
 the Arduino Nano pin connections are documented in the source code. 
 
+![controller-1](images/Controller/jpg)
+
 Software-wise - this project relies on the following Adafruit libraries:
 * https://github.com/adafruit/RTClib
 * https://github.com/adafruit/Adafruit_NeoPixel
@@ -103,3 +105,57 @@ I was having reset problems when trying the more LED intensive display modes.
 Follow the 
 [Adafruit advice for powering Neopixel products](https://learn.adafruit.com/adafruit-neopixel-uberguide/powering-neopixels), 
 and get a 5v 2-amp power supply and have a big 100uf Cap in the circuit.
+
+## Project Images
+
+### Analog Display Mode
+
+![Analog](images/Analog-mode.jpg)
+
+This is the default display mode after power on/reset.
+
+White LED show the hour postions around the ring. Red is Hours, Green is Minutes 
+and Blue is seconds.
+
+### Pulse Display Mode
+
+![Pulse](images/Pulse-mode.jpg)
+
+Only Hours, Minutes, and Seconds are displayed. They pulse - full brightness on 
+the change of second then they fade to black before the next second.
+
+Looks cool but really distracting.
+
+### Comet Display Mode
+
+![Comet](images/Comet-Mode.jpg)
+
+Hours (red), Minutes (Green), and Seconds (Blue) have a comet tail of 30-led 
+which fade in brightness to black. When the colours overlap they mix.
+
+Again, looks cool, but of all the modes, the hardest to actually tell the time.
+Especially when the comet tails are all overlapping.
+
+### Flood Display Mode
+
+![Flood](images/Flood-mode.jpg)
+
+Inspired by friends cheapo digital clock kit from Aliexpress. As usual, Hours 
+are Red, Minutes are Green, and Seconds are Blue.
+
+However, on even minutes the Seconds fill the entire circumference, one LED per
+second. Then on odd minutes it turns a Blue LED off per second.
+
+The effect is that it fills and then clears the whole display every couple of 
+minutes. Quite nice.
+
+### Hand Display Mode 
+
+![Hand](images/Hand-Mode.jpg)
+
+Same colour scheme as always except that Hours have 5-LED, Minutes have 3-LED 
+and seconds have 1-LED. It feels almost counterintuitive because normally on
+the hands of a clock the hours is the small hand. 
+
+However, doing it the other way around just doesn't feel right somehow. Not my 
+favourite.
