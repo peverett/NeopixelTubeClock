@@ -63,7 +63,7 @@ and OTHER [Neopixel Clock](https://github.com/peverett/NeopixelClock) projects.
 Honestly, there was a lot of hot glue used too. It's a bit of a blur. However,
 the Arduino Nano pin connections are documented in the source code. 
 
-![controller-1](images/Controller/jpg)
+![controller-1](images/Controller.jpg)
 
 Software-wise - this project relies on the following Adafruit libraries:
 * https://github.com/adafruit/RTClib
