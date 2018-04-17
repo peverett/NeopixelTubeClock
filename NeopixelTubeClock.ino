@@ -424,14 +424,139 @@ private:
   uint8_t rgbw[4];
 };
 
+/* 
+ *  Hours and Minutes are a single pixel.
+ *  Colours combine.
+ *  Seconds fill the whole ring, one pixel per second (blue)
+ *  Then empty one pixel per second.
+ */
+class FloodTimeDisplay: public BaseTimeDisplay {
+public:
+  FloodTimeDisplay(NeoPixelOffset &r60) : BaseTimeDisplay(r60) {};
+
+  void Display(const DateTime &tn) {
+    uint8_t brg;
+    uint8_t r, g, b, w;
+      
+    for (int i=0; i<NEO_MAX; i++)
+      ring60.setPixelColor(i, 0, 0, 0, 0);
+
+    // Turn on for even minutes and off for odd
+    brg = ((tn.minute() % 2) == 0) ? bi : 0;
+    for (int i=0; i<tn.second()+1; i++)
+      ring60.setPixelColor(i, 0, 0, brg, 0);
+
+    brg = (brg) ? 0 : bi;
+    for (int i=tn.second()+1; i<NEO_MAX; i++)
+      ring60.setPixelColor(i, 0, 0, brg, 0);
+
+    ring60.getPixelColor(HourToPixel(tn.hour()), &r, &g, &b, &w);
+    ring60.setPixelColor(HourToPixel(tn.hour()), ri, g, b, w);
+    
+    ring60.getPixelColor(tn.minute(), &r, &g, &b, &w);
+    ring60.setPixelColor(tn.minute(), r, gi, b, w);
+    
+    ring60.show();
+  };
+
+  void Update(const DateTime &tn, const DateTime &tt) { 
+    uint8_t brg;
+    uint8_t r, g, b, w;
+
+    if (tn.second() != tt.second())
+    {
+      brg = ((tn.minute() % 2) == 0) ? bi : 0;
+      ring60.getPixelColor(tn.second(), &r, &g, &b, &w);
+      ring60.setPixelColor(tn.second(), r, g, brg, w);
+
+      if (tn.minute() != tt.minute())
+      {
+        ring60.getPixelColor(tt.minute(), &r, &g, &b, &w);
+        ring60.setPixelColor(tt.minute(), r, 0, b, w);
+        ring60.getPixelColor(tn.minute(), &r, &g, &b, &w);
+        ring60.setPixelColor(tn.minute(), r, gi, b, w);
+
+        if (tn.hour() != tt.hour())
+        {
+          ring60.getPixelColor(HourToPixel(tt.hour()), &r, &g, &b, &w);
+          ring60.setPixelColor(HourToPixel(tt.hour()), 0, g, b, w);
+          ring60.getPixelColor(HourToPixel(tn.hour()), &r, &g, &b, &w);
+          ring60.setPixelColor(HourToPixel(tn.hour()), ri, g, b, w);
+        }
+      }
+    }     
+    ring60.show();
+  };
+  
+};
+
+
+/* 
+ *  Hours - 5-pixels
+ *  Minutes - 3-pixels
+ *  Seconds - 1-pixel
+ */
+class PendulumTimeDisplay: public BaseTimeDisplay {
+public:
+  PendulumTimeDisplay(NeoPixelOffset &r60) : BaseTimeDisplay(r60) {};
+
+  void hand(uint8_t pixel, uint8_t brg, uint8_t len, int col)
+  {
+    uint8_t idx = (pixel < len) ? (pixel+60)-len : pixel - len;
+    uint8_t finish = (pixel + len + 1) % NEO_MAX;
+    uint8_t rgbw[4];
+    
+    for (; idx != finish; idx = (idx + 1) % NEO_MAX)
+    {
+      ring60.getPixelColor(idx, &rgbw[RED], &rgbw[GREEN], &rgbw[BLUE], &rgbw[WHITE]);
+      rgbw[col]=brg;
+      ring60.setPixelColor(idx, rgbw[RED], rgbw[GREEN], rgbw[BLUE], rgbw[WHITE]);      
+    }
+  }
+
+  void Display(const DateTime &tn) {
+    for (int i=0; i<NEO_MAX; i++)
+      ring60.setPixelColor(i, 0, 0, 0, 0);
+
+    hand(HourToPixel(tn.hour()), ri, 2, RED);
+    hand(tn.minute(), gi, 1, GREEN);
+    hand(tn.second(), bi, 0, BLUE);
+ 
+    ring60.show();
+  };
+
+  void Update(const DateTime &tn, const DateTime &tt) { 
+    if (tn.second() != tt.second())
+    {
+      hand(tt.second(), 0, 0, BLUE);
+      hand(tn.second(), bi, 0, BLUE);
+
+      if (tn.minute() != tt.minute())
+      {
+        hand(tt.minute(), 0, 1, GREEN);
+        hand(tn.minute(), gi, 1, GREEN);
+
+        if (tn.hour() != tt.hour())
+        {
+          hand(HourToPixel(tt.hour()), 0, 2, RED);
+          hand(HourToPixel(tn.hour()), ri, 2, RED);
+        }
+      }
+    }
+    ring60.show();
+  }; 
+};
+
 /*
  * The different display modes.
  */
-AnalogTimeDisplay analog  = AnalogTimeDisplay(np60);
-PulseTimeDisplay pulse    = PulseTimeDisplay(np60);
-PastelTimeDisplay pastel  = PastelTimeDisplay(np60);
+AnalogTimeDisplay analog      = AnalogTimeDisplay(np60);
+PulseTimeDisplay pulse        = PulseTimeDisplay(np60);
+PastelTimeDisplay pastel      = PastelTimeDisplay(np60);
+FloodTimeDisplay flood        = FloodTimeDisplay(np60);
+PendulumTimeDisplay pendulum  = PendulumTimeDisplay(np60);
 
-BaseTimeDisplay *dm[] = { &analog, &pulse, &pastel };
+BaseTimeDisplay *dm[] = { &analog, &pulse, &pastel, &flood, &pendulum };
 const int disp_mode_max = sizeof(dm) / sizeof(BaseTimeDisplay*);
 int mode;
 
@@ -661,7 +786,7 @@ public:
 class set_brightness : public set_base {
 public:
   void set_encoder_led(void) {
-    encoder_rgb_led(LED_OFF, LED_ON, LED_ON); // Cyan
+    encoder_rgb_led(LED_ON, LED_OFF, LED_ON); // Cyan
   }
 
   void enc_left(void) {
@@ -708,7 +833,7 @@ public:
 class set_display : public set_base {
 public:
   void set_encoder_led(void) {
-    encoder_rgb_led(LED_ON, LED_OFF, LED_ON); // purple
+    encoder_rgb_led(LED_OFF, LED_ON, LED_ON); // purple
   }
 
   void enc_left(void) {
@@ -821,7 +946,7 @@ void loop() {
       debounce_enc_switch(0);
       set_second().action();
     } 
-    else {// Short press
+    else {  // Short press
       set_brightness().action();
       debounce_enc_switch(0);
       set_display().action();
